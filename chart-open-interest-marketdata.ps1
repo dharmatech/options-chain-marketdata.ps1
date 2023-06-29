@@ -85,8 +85,19 @@ function get-options-chain ($symbol, $expiration)
     $chain
 }
 # ----------------------------------------------------------------------           
+
+
+function round-to-strike($strikes, $val)
+{
+    $strikes | Select-Object @{ Label = 'strike'; Expression = { $_ } }, @{ Label = 'dist'; Expression = { [math]::Abs($_ - $val) } } | Sort-Object dist | Select-Object -First 1 | % strike
+}
+
+# round-to-strike $strikes_union 123
+
+
 function chart-open-interest ($symbol, $expirations)
 {
+    Write-Host 'Retrieving options chain data' -ForegroundColor Yellow
     
     $chains = foreach ($date in $expirations)
     {
@@ -110,6 +121,8 @@ function chart-open-interest ($symbol, $expirations)
         "#9C755F"
         "#BAB0AC"
     )
+
+    Write-Host 'Building calls datasets' -ForegroundColor Yellow
             
     $i = 0    
 
@@ -130,6 +143,8 @@ function chart-open-interest ($symbol, $expirations)
         @{ label = "C $date ${dte}d"; data = $data; backgroundColor = $colors[$i++ % $colors.Count] }
     }
 
+    Write-Host 'Building puts datasets' -ForegroundColor Yellow
+
     $i = 0
 
     $datasets_puts = foreach ($chain in $chains)
@@ -137,7 +152,9 @@ function chart-open-interest ($symbol, $expirations)
         $data = $strikes_union | % {
             $strike = $_
 
-            $option = $chain.puts | ? strike -EQ $strike
+            # $option = $chain.puts | ? strike -EQ $strike
+
+            $option = $chain.puts | ? strike -EQ $strike | Select-Object -First 1
 
             if ($option -eq $null) { 0 } else { -$option.openInterest }
         }
@@ -149,6 +166,8 @@ function chart-open-interest ($symbol, $expirations)
         @{ label = "P $date ${dte}d"; data = $data; backgroundColor = $colors[$i++ % $colors.Count] }
     }
 
+    Write-Host 'Creating chart' -ForegroundColor Yellow
+    
     # ----------------------------------------------------------------------
     $json = @{
         chart = @{
@@ -160,13 +179,41 @@ function chart-open-interest ($symbol, $expirations)
                 datasets = $datasets_calls + $datasets_puts
             }
             options = @{
-                title = @{ display = $true; text = ('{0} Open Interest' -f $symbol) }
+                title = @{ display = $true; text = @(('{0} Open Interest as of {1}' -f $symbol, (Get-Date -Format 'yyyy-MM-dd')), 'data source: MarketData.app') }
+
                 scales = @{ 
                     xAxes = @( @{ stacked = $true } ) 
                     yAxes = @( @{ stacked = $true } ) 
                 }
                 plugins = @{ datalabels = @{ display = $false } }
                 legend = @{ position = 'left' }
+
+
+                annotation = @{
+
+                    annotations = @(
+    
+                        @{
+                            # type = 'line'; mode = 'vertical'; value = $chains[0].calls[0].underlyingPrice; scaleID = 'X1'; borderColor = 'red'; borderWidth = 1
+
+                            type = 'line'; mode = 'vertical'; value = (round-to-strike $strikes_union $chains[0].calls[0].underlyingPrice); scaleID = 'X1'; borderColor = 'red'; borderWidth = 1
+
+                            # type = 'line'; mode = 'vertical'; value = [math]::Round($chains[0].calls[0].underlyingPrice) ; scaleID = 'X1'; borderColor = 'red'; borderWidth = 1
+
+                            # type = 'line'; mode = 'vertical'; value = 250 ; scaleID = 'X1'; borderColor = 'red'; borderWidth = 1
+                            
+                            # type = 'line'; mode = 'vertical'; value = 250; scaleID = 'X1'; borderColor = 'red'; borderWidth = 1
+
+                            # type = 'line'; mode = 'vertical'; value = 256.89; scaleID = 'X1'; borderColor = 'red'; borderWidth = 2
+
+                            label = @{
+                                # enabled = $true
+                                # content = 'Fed Funds Lower'
+                                # position = 'end'
+                            }
+                        }
+                    )
+                }                
             }
         }
     } | ConvertTo-Json -Depth 100
@@ -186,6 +233,26 @@ exit
 $symbol = 'SPY'
 $expirations = '2023-06-30', '2023-07-07', '2023-07-14', '2023-07-21', '2023-07-28', '2023-08-04', '2023-08-18', '2023-09-15'
 
-$chains_spy = .\chart-open-interest-marketdata.ps1 SPY '2023-06-30', '2023-07-07', '2023-07-14', '2023-07-21', '2023-07-28', '2023-08-04', '2023-08-18', '2023-09-15'
+
 
 $chains = $chains_spy
+
+
+$chains_spy  = .\chart-open-interest-marketdata.ps1 SPY  '2023-06-30', '2023-07-07', '2023-07-14', '2023-07-21', '2023-07-28', '2023-08-04', '2023-08-18', '2023-09-15'
+$chains_nvda = .\chart-open-interest-marketdata.ps1 NVDA '2023-06-30', '2023-07-07', '2023-07-14', '2023-07-21', '2023-07-28', '2023-08-04', '2023-08-18', '2023-09-15'
+$chains_qqq  = .\chart-open-interest-marketdata.ps1 QQQ  '2023-06-30', '2023-07-07', '2023-07-14', '2023-07-21', '2023-07-28', '2023-08-04', '2023-08-18', '2023-09-15'
+$chains_tsla = .\chart-open-interest-marketdata.ps1 TSLA '2023-06-30', '2023-07-07', '2023-07-14', '2023-07-21', '2023-07-28', '2023-08-04', '2023-08-18', '2023-09-15'
+$chains_tlt  = .\chart-open-interest-marketdata.ps1 TLT  '2023-06-30', '2023-07-07', '2023-07-14', '2023-07-21', '2023-07-28', '2023-08-04', '2023-08-18', '2023-09-15'
+$chains_gld  = .\chart-open-interest-marketdata.ps1 GLD  '2023-06-30', '2023-07-07', '2023-07-14', '2023-07-21', '2023-07-28', '2023-08-04', '2023-08-18', '2023-09-15'
+$chains_uso  = .\chart-open-interest-marketdata.ps1 USO  '2023-06-30', '2023-07-07', '2023-07-14', '2023-07-21', '2023-07-28', '2023-08-04', '2023-08-18', '2023-09-15'
+$chains_ung  = .\chart-open-interest-marketdata.ps1 UNG  '2023-06-30', '2023-07-07', '2023-07-14', '2023-07-21', '2023-07-28', '2023-08-04', '2023-08-18'
+$chains_kre  = .\chart-open-interest-marketdata.ps1 KRE  '2023-06-30', '2023-07-07', '2023-07-14', '2023-07-21', '2023-07-28', '2023-08-04', '2023-08-18', '2023-09-15'
+
+$chains = $chains_tsla
+
+
+
+
+$chains_spx  = .\chart-open-interest-marketdata.ps1 SPX  '2023-06-30', '2023-07-07', '2023-07-14', '2023-07-21', '2023-07-28', '2023-08-04', '2023-08-18', '2023-09-15'
+
+$chains = $chains_spx
