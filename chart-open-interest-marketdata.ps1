@@ -1,5 +1,5 @@
 
-Param([string]$symbol, [string[]]$expirations)
+Param([string]$symbol, [string[]]$expirations, $dte)
 
 $api_key = Get-Content C:\Users\dharm\Dropbox\api-keys\marketdata-app
 
@@ -39,8 +39,39 @@ class Chain
     [Option[]]$puts
 }
 # ----------------------------------------------------------------------
+function get-expirations ($symbol)
+{
+    Write-Host "Downloading expirations for $symbol" -ForegroundColor Yellow
+
+    $result = Invoke-RestMethod ('https://api.marketdata.app/v1/options/expirations/{0}?token={1}' -f $symbol, $api_key)
+
+    $result.expirations
+}
+
+function get-expirations-dte ($symbol, $dte)
+{
+    $expirations = get-expirations $symbol
+
+    foreach ($expiration in $expirations)
+    {
+        if (([math]::Ceiling(((Get-Date $expiration) - (Get-Date)).TotalDays) -le 0) -and (((Get-Date $expiration) - (Get-Date)).TotalHours -lt -16))
+        {
+            continue
+        }
+
+        if ($dte -ge [math]::Ceiling(((Get-Date $expiration) - (Get-Date)).TotalDays))
+        {
+            $expiration
+        }
+    }
+}
+
+# ----------------------------------------------------------------------
 function get-options-chain ($symbol, $expiration)
 {
+    Write-Host "Downloading options chain for $symbol $expiration" -ForegroundColor Yellow
+
+
     $result = Invoke-RestMethod ('https://api.marketdata.app/v1/options/chain/{0}/?expiration={1}&dateformat=timestamp&token={2}' -f $symbol, $expiration, $api_key)
     
     $options = foreach ($i in 0..($result.optionSymbol.Count - 1))
@@ -94,9 +125,26 @@ function round-to-strike($strikes, $val)
 
 # round-to-strike $strikes_union 123
 
+# $symbol = 'COIN'
+# $dte = $null
+# $expirations = $null
 
-function chart-open-interest ($symbol, $expirations)
-{
+# function chart-open-interest ($symbol, $expirations, [int]$dte)
+# {
+    if ($dte -ne $null)
+    {
+        Write-Host "calling get-expirations-dte $symbol $dte"
+
+        $expirations = get-expirations-dte $symbol $dte
+    }
+
+    if ($expirations -eq $null)
+    {
+        $expirations = get-expirations $symbol
+    }
+
+    # Write-Host "expirations: $expirations"
+
     Write-Host 'Retrieving options chain data' -ForegroundColor Yellow
     
     $chains = foreach ($date in $expirations)
@@ -224,35 +272,28 @@ function chart-open-interest ($symbol, $expirations)
     
     Start-Process ('https://quickchart.io/chart-maker/view/{0}' -f $id)    
     # ----------------------------------------------------------------------           
-}
+# }
 
-chart-open-interest $symbol $expirations
+# chart-open-interest $symbol $expirations
+
+
+
 # ----------------------------------------------------------------------           
 exit
 # ----------------------------------------------------------------------           
-$symbol = 'SPY'
-$expirations = '2023-06-30', '2023-07-07', '2023-07-14', '2023-07-21', '2023-07-28', '2023-08-04', '2023-08-18', '2023-09-15'
 
+# $chains_spy  = .\chart-open-interest-marketdata.ps1 SPY  '2023-06-30', '2023-07-07', '2023-07-14', '2023-07-21', '2023-07-28', '2023-08-04', '2023-08-18', '2023-09-15'
+$chains_spy = .\chart-open-interest-marketdata.ps1 SPY -dte 90
 
-
-$chains = $chains_spy
-
-
-$chains_spy  = .\chart-open-interest-marketdata.ps1 SPY  '2023-06-30', '2023-07-07', '2023-07-14', '2023-07-21', '2023-07-28', '2023-08-04', '2023-08-18', '2023-09-15'
 $chains_nvda = .\chart-open-interest-marketdata.ps1 NVDA '2023-06-30', '2023-07-07', '2023-07-14', '2023-07-21', '2023-07-28', '2023-08-04', '2023-08-18', '2023-09-15'
 $chains_qqq  = .\chart-open-interest-marketdata.ps1 QQQ  '2023-06-30', '2023-07-07', '2023-07-14', '2023-07-21', '2023-07-28', '2023-08-04', '2023-08-18', '2023-09-15'
 $chains_tsla = .\chart-open-interest-marketdata.ps1 TSLA '2023-06-30', '2023-07-07', '2023-07-14', '2023-07-21', '2023-07-28', '2023-08-04', '2023-08-18', '2023-09-15'
 $chains_tlt  = .\chart-open-interest-marketdata.ps1 TLT  '2023-06-30', '2023-07-07', '2023-07-14', '2023-07-21', '2023-07-28', '2023-08-04', '2023-08-18', '2023-09-15'
 $chains_gld  = .\chart-open-interest-marketdata.ps1 GLD  '2023-06-30', '2023-07-07', '2023-07-14', '2023-07-21', '2023-07-28', '2023-08-04', '2023-08-18', '2023-09-15'
 $chains_uso  = .\chart-open-interest-marketdata.ps1 USO  '2023-06-30', '2023-07-07', '2023-07-14', '2023-07-21', '2023-07-28', '2023-08-04', '2023-08-18', '2023-09-15'
-$chains_ung  = .\chart-open-interest-marketdata.ps1 UNG  '2023-06-30', '2023-07-07', '2023-07-14', '2023-07-21', '2023-07-28', '2023-08-04', '2023-08-18'
+# $chains_ung  = .\chart-open-interest-marketdata.ps1 UNG  '2023-06-30', '2023-07-07', '2023-07-14', '2023-07-21', '2023-07-28', '2023-08-04', '2023-08-18'
+$chains_ung = .\chart-open-interest-marketdata.ps1 UNG
 $chains_kre  = .\chart-open-interest-marketdata.ps1 KRE  '2023-06-30', '2023-07-07', '2023-07-14', '2023-07-21', '2023-07-28', '2023-08-04', '2023-08-18', '2023-09-15'
+$chains_coin = .\chart-open-interest-marketdata.ps1 COIN 
 
-$chains = $chains_tsla
-
-
-
-
-$chains_spx  = .\chart-open-interest-marketdata.ps1 SPX  '2023-06-30', '2023-07-07', '2023-07-14', '2023-07-21', '2023-07-28', '2023-08-04', '2023-08-18', '2023-09-15'
-
-$chains = $chains_spx
+# ----------------------------------------------------------------------           
