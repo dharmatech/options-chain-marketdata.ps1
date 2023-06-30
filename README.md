@@ -17,3 +17,12 @@ SPY with expirations up to 90 days:
 
     $chains_spy = .\chart-open-interest-marketdata.ps1 SPY -dte 90
 
+## API key
+
+Update the `$api_key` variable accordingly.
+
+## Data source
+
+MarketData.app is being used for the data source:
+
+https://www.marketdata.app/
