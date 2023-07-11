@@ -1,5 +1,5 @@
 
-Param([string]$symbol, [string[]]$expirations, $dte)
+Param([string]$symbol, [string[]]$expirations, $dte, $as_of)
 
 $api_key = Get-Content C:\Users\dharm\Dropbox\api-keys\marketdata-app
 
@@ -39,11 +39,27 @@ class Chain
     [Option[]]$puts
 }
 # ----------------------------------------------------------------------
-function get-expirations ($symbol)
+# function get-expirations ($symbol)
+# {
+#     Write-Host "Downloading expirations for $symbol" -ForegroundColor Yellow
+
+#     $result = Invoke-RestMethod ('https://api.marketdata.app/v1/options/expirations/{0}?token={1}' -f $symbol, $api_key)
+
+#     $result.expirations
+# }
+
+function get-expirations ($symbol, $as_of)
 {
     Write-Host "Downloading expirations for $symbol" -ForegroundColor Yellow
 
-    $result = Invoke-RestMethod ('https://api.marketdata.app/v1/options/expirations/{0}?token={1}' -f $symbol, $api_key)
+    if ($as_of -eq $null)
+    {
+        $result = Invoke-RestMethod ('https://api.marketdata.app/v1/options/expirations/{0}?token={1}' -f $symbol, $api_key)
+    }
+    else
+    {
+        $result = Invoke-RestMethod ('https://api.marketdata.app/v1/options/expirations/{0}?date={1}&token={2}' -f $symbol, $as_of, $api_key)
+    }
 
     $result.expirations
 }
@@ -67,12 +83,67 @@ function get-expirations-dte ($symbol, $dte)
 }
 
 # ----------------------------------------------------------------------
-function get-options-chain ($symbol, $expiration)
+# function get-options-chain ($symbol, $expiration)
+# {
+#     Write-Host "Downloading options chain for $symbol $expiration" -ForegroundColor Yellow
+
+
+#     $result = Invoke-RestMethod ('https://api.marketdata.app/v1/options/chain/{0}/?expiration={1}&dateformat=timestamp&token={2}' -f $symbol, $expiration, $api_key)
+    
+#     $options = foreach ($i in 0..($result.optionSymbol.Count - 1))
+#     {
+#         $obj = [Option]::new()
+    
+#         $obj.optionSymbol = $result.optionSymbol[$i]
+#         $obj.underlying      = $result.underlying[$i]
+#         $obj.expiration      = $result.expiration[$i]
+#         $obj.side            = $result.side[$i]
+#         $obj.strike          = $result.strike[$i]
+#         $obj.firstTraded     = $result.firstTraded[$i]
+#         $obj.dte             = $result.dte[$i]
+#         $obj.updated         = $result.updated[$i]
+#         $obj.bid             = $result.bid[$i]
+#         $obj.bidSize         = $result.bidSize[$i]
+#         $obj.mid             = $result.mid[$i]
+#         $obj.ask             = $result.ask[$i]
+#         $obj.askSize         = $result.askSize[$i]
+#         $obj.last            = $result.last[$i]
+#         $obj.openInterest    = $result.openInterest[$i]
+#         $obj.volume          = $result.volume[$i]
+#         $obj.inTheMoney      = $result.inTheMoney[$i]
+#         $obj.intrinsicValue  = $result.intrinsicValue[$i]
+#         $obj.extrinsicValue  = $result.extrinsicValue[$i]
+#         $obj.underlyingPrice = $result.underlyingPrice[$i]
+#         $obj.iv              = $result.iv[$i]
+#         $obj.delta           = $result.delta[$i]
+#         $obj.gamma           = $result.gamma[$i]
+#         $obj.theta           = $result.theta[$i]
+#         $obj.vega            = $result.vega[$i]
+#         $obj.rho             = $result.rho[$i]
+    
+#         $obj
+#     }
+
+#     $chain = [Chain]::new()
+
+#     $chain.calls = $options | ? side -EQ call
+#     $chain.puts  = $options | ? side -EQ put
+    
+#     $chain
+# }
+
+function get-options-chain ($symbol, $expiration, $as_of)
 {
     Write-Host "Downloading options chain for $symbol $expiration" -ForegroundColor Yellow
 
-
-    $result = Invoke-RestMethod ('https://api.marketdata.app/v1/options/chain/{0}/?expiration={1}&dateformat=timestamp&token={2}' -f $symbol, $expiration, $api_key)
+    if ($as_of -eq $null)
+    {
+        $result = Invoke-RestMethod ('https://api.marketdata.app/v1/options/chain/{0}/?expiration={1}&dateformat=timestamp&token={2}' -f $symbol, $expiration, $api_key)
+    }
+    else
+    {
+        $result = Invoke-RestMethod ('https://api.marketdata.app/v1/options/chain/{0}/?expiration={1}&dateformat=timestamp&date={2}&token={3}' -f $symbol, $expiration, $as_of, $api_key)
+    }
     
     $options = foreach ($i in 0..($result.optionSymbol.Count - 1))
     {
@@ -129,8 +200,8 @@ function round-to-strike($strikes, $val)
 # $dte = $null
 # $expirations = $null
 
-# function chart-open-interest ($symbol, $expirations, [int]$dte)
-# {
+function chart-open-interest ($symbol, $expirations, $dte, $as_of)
+{
     if ($dte -ne $null)
     {
         Write-Host "calling get-expirations-dte $symbol $dte"
@@ -140,8 +211,10 @@ function round-to-strike($strikes, $val)
 
     if ($expirations -eq $null)
     {
-        $expirations = get-expirations $symbol
+        $expirations = get-expirations $symbol $as_of
     }
+
+
 
     # Write-Host "expirations: $expirations"
 
@@ -149,7 +222,7 @@ function round-to-strike($strikes, $val)
     
     $chains = foreach ($date in $expirations)
     {
-        get-options-chain $symbol $date
+        get-options-chain $symbol $date $as_of
     }
 
     $chains
@@ -213,9 +286,11 @@ function round-to-strike($strikes, $val)
 
         @{ label = "P $date ${dte}d"; data = $data; backgroundColor = $colors[$i++ % $colors.Count] }
     }
-
+    # ----------------------------------------------------------------------
+    $total_calls_oi = $chains | % { $chain = $_; $chain.calls | Measure-Object openInterest -Sum | % Sum } | Measure-Object -Sum | % Sum
+    $total_puts_oi  = $chains | % { $chain = $_; $chain.puts  | Measure-Object openInterest -Sum | % Sum } | Measure-Object -Sum | % Sum    
+    # ----------------------------------------------------------------------
     Write-Host 'Creating chart' -ForegroundColor Yellow
-    
     # ----------------------------------------------------------------------
     $json = @{
         chart = @{
@@ -227,7 +302,15 @@ function round-to-strike($strikes, $val)
                 datasets = $datasets_calls + $datasets_puts
             }
             options = @{
-                title = @{ display = $true; text = @(('{0} Open Interest as of {1}' -f $symbol, (Get-Date -Format 'yyyy-MM-dd')), 'data source: MarketData.app') }
+                title = @{ 
+                    display = $true
+                    text = @(
+                        ('{0} Open Interest as of {1}' -f $symbol, $(if ($as_of) { $as_of } else { (Get-Date -Format 'yyyy-MM-dd') })),
+                        ("total calls OI: {0}" -f $total_calls_oi.ToString('N0')),
+                        ("total puts OI: {0}" -f $total_puts_oi.ToString('N0')),
+                        'data source: MarketData.app'
+                    ) 
+                }
 
                 scales = @{ 
                     xAxes = @( @{ stacked = $true } ) 
@@ -272,28 +355,109 @@ function round-to-strike($strikes, $val)
     
     Start-Process ('https://quickchart.io/chart-maker/view/{0}' -f $id)    
     # ----------------------------------------------------------------------           
-# }
+}
 
-# chart-open-interest $symbol $expirations
-
-
+chart-open-interest $symbol $expirations $dte $as_of
 
 # ----------------------------------------------------------------------           
 exit
 # ----------------------------------------------------------------------           
 
 # $chains_spy  = .\chart-open-interest-marketdata.ps1 SPY  '2023-06-30', '2023-07-07', '2023-07-14', '2023-07-21', '2023-07-28', '2023-08-04', '2023-08-18', '2023-09-15'
-$chains_spy = .\chart-open-interest-marketdata.ps1 SPY -dte 90
+$chains_spy = .\chart-open-interest-marketdata.ps1 SPY
+# $chains_spy = .\chart-open-interest-marketdata.ps1 SPY -dte 90
 
-$chains_nvda = .\chart-open-interest-marketdata.ps1 NVDA '2023-06-30', '2023-07-07', '2023-07-14', '2023-07-21', '2023-07-28', '2023-08-04', '2023-08-18', '2023-09-15'
+$chains_nvda = .\chart-open-interest-marketdata.ps1 NVDA '2023-07-07', '2023-07-14', '2023-07-21', '2023-07-28', '2023-08-04', '2023-08-18', '2023-09-15'
+
 $chains_qqq  = .\chart-open-interest-marketdata.ps1 QQQ  '2023-06-30', '2023-07-07', '2023-07-14', '2023-07-21', '2023-07-28', '2023-08-04', '2023-08-18', '2023-09-15'
+$chains_qqq  = .\chart-open-interest-marketdata.ps1 QQQ -dte 90
+
 $chains_tsla = .\chart-open-interest-marketdata.ps1 TSLA '2023-06-30', '2023-07-07', '2023-07-14', '2023-07-21', '2023-07-28', '2023-08-04', '2023-08-18', '2023-09-15'
 $chains_tlt  = .\chart-open-interest-marketdata.ps1 TLT  '2023-06-30', '2023-07-07', '2023-07-14', '2023-07-21', '2023-07-28', '2023-08-04', '2023-08-18', '2023-09-15'
 $chains_gld  = .\chart-open-interest-marketdata.ps1 GLD  '2023-06-30', '2023-07-07', '2023-07-14', '2023-07-21', '2023-07-28', '2023-08-04', '2023-08-18', '2023-09-15'
 $chains_uso  = .\chart-open-interest-marketdata.ps1 USO  '2023-06-30', '2023-07-07', '2023-07-14', '2023-07-21', '2023-07-28', '2023-08-04', '2023-08-18', '2023-09-15'
 # $chains_ung  = .\chart-open-interest-marketdata.ps1 UNG  '2023-06-30', '2023-07-07', '2023-07-14', '2023-07-21', '2023-07-28', '2023-08-04', '2023-08-18'
 $chains_ung = .\chart-open-interest-marketdata.ps1 UNG
-$chains_kre  = .\chart-open-interest-marketdata.ps1 KRE  '2023-06-30', '2023-07-07', '2023-07-14', '2023-07-21', '2023-07-28', '2023-08-04', '2023-08-18', '2023-09-15'
+# $chains_kre  = .\chart-open-interest-marketdata.ps1 KRE  '2023-06-30', '2023-07-07', '2023-07-14', '2023-07-21', '2023-07-28', '2023-08-04', '2023-08-18', '2023-09-15'
+$chains_kre  = .\chart-open-interest-marketdata.ps1 KRE
 $chains_coin = .\chart-open-interest-marketdata.ps1 COIN 
 
+
+$chains_nke = .\chart-open-interest-marketdata.ps1 NKE
+$chains_tgt = .\chart-open-interest-marketdata.ps1 TGT
+
+$chains_envx = .\chart-open-interest-marketdata.ps1 ENVX
+$chains_trup = .\chart-open-interest-marketdata.ps1 TRUP
+
+$chains_trup = .\chart-open-interest-marketdata.ps1 CVNA
+
 # ----------------------------------------------------------------------           
+# as-of
+# ----------------------------------------------------------------------           
+
+
+
+$result_expirations = get-expirations SPY '2022-08-12'
+
+
+$symbol = 'SPY'
+# $as_of = '2022-08-16'
+# $as_of = '2022-08-12'
+$as_of = '2022-03-29'
+$api_key
+
+$result = Invoke-RestMethod ('https://api.marketdata.app/v1/options/expirations/{0}?date={1}&token={2}' -f $symbol, $as_of, $api_key)
+
+# SPY high 2022-03-08
+# SPY high 2022-03-29
+# SPY low  2022-06-17
+# SPY high 2022-08-16
+
+get-expirations SPY '2022-01-04'
+get-expirations SPY '2022-03-08'
+get-expirations SPY '2022-03-29'
+get-expirations SPY '2022-10-13'
+get-expirations SPY '2022-12-01'
+get-expirations SPY '2022-12-28'
+get-expirations SPY '2023-02-02'
+get-expirations SPY '2023-03-13'
+
+
+
+
+
+
+
+
+
+
+
+
+$chains_spy = .\chart-open-interest-marketdata.ps1 -symbol SPY -as_of '2022-01-04' # high
+$chains_spy = chart-open-interest -symbol SPY -as_of '2022-03-08' # low
+$chains_spy = chart-open-interest -symbol SPY -as_of '2022-03-29' # high
+$chains_spy = chart-open-interest -symbol SPY -as_of '2022-06-17' # low
+$chains_spy = chart-open-interest -symbol SPY -as_of '2022-08-12' # high
+$chains_spy = chart-open-interest -symbol SPY -as_of '2022-10-13' # low
+$chains_spy = chart-open-interest -symbol SPY -as_of '2022-12-01' # high
+$chains_spy = chart-open-interest -symbol SPY -as_of '2022-12-28' # low
+$chains_spy = chart-open-interest -symbol SPY -as_of '2023-02-02' # high
+$chains_spy = chart-open-interest -symbol SPY -as_of '2023-03-13' # low
+$chains_spy = .\chart-open-interest-marketdata.ps1 -symbol SPY
+
+
+$chains_spy = chart-open-interest -symbol SPY -expirations $result_expirations -as_of '2022-08-12' # high
+
+
+$chain = $chains_spy[0]
+
+foreach ($chain in $chains_spy)
+{
+    
+} 
+
+
+$chains_spy | % { $chain = $_; $chain.calls | Measure-Object openInterest -Sum | % Sum } | Measure-Object -Sum | % Sum
+
+
+
